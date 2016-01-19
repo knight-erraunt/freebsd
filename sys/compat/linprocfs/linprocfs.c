@@ -40,7 +40,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+__FBSDID("$FreeBSD: head/sys/compat/linprocfs/linprocfs.c 285685 2015-07-19 08:52:35Z araujo $");
 
 #include <sys/param.h>
 #include <sys/queue.h>
@@ -61,6 +61,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/ptrace.h>
 #include <sys/resourcevar.h>
+#include <sys/resource.h>
 #include <sys/sbuf.h>
 #include <sys/sem.h>
 #include <sys/smp.h>
@@ -1366,6 +1367,80 @@ linprocfs_dofdescfs(PFS_FILL_ARGS)
 	return (0);
 }
 
+/*
+ * Filler function for proc/pid/limits
+ */
+static int
+linprocfs_doproclimits(PFS_FILL_ARGS)
+{
+	const char *sec = "seconds", *bytes = "bytes", * proc = "processes",
+			* locks = "locks", * signals = "signals", 
+			* files = "files", * unlimited = "unlimited";
+	const int not_supported = (-1), none = (-1);
+	struct limit_info {
+		const char * limit_desc, * limit_unit;
+		/*
+		 * The resource limits id from resource.h file to be used to fill
+		 * this limit. -1 if not supported, then rlimit field is used
+		 * to get the hard coded values.
+		 */
+		int rlim_id;
+		struct rlimit rlimit;
+	/* The 16 below is the RLIM_NLIMITS of linux, it is hard coded as
+	 * this will probably not be used anywhere except this function 
+	 */
+	} limits_info[16] = {
+		{"Max cpu time",	sec,	RLIMIT_CPU,	{none, none}},
+		{"Max file size", 	bytes,	RLIMIT_FSIZE,   {none, none}},
+		{"Max data size",	bytes, 	RLIMIT_DATA,	{none, none}},
+		{"Max stack size",	bytes, 	RLIMIT_STACK,	{none, none}},
+		{"Max core file size",  bytes,	RLIMIT_CORE,	{none, none}},
+		{"Max resident set",	bytes,	RLIMIT_RSS,	{none, none}},
+		{"Max processes",	proc,	RLIMIT_NPROC,	{none, none}},
+		{"Max open files",	files,	RLIMIT_NOFILE,  {none, none}},
+		{"Max locked memory",	bytes,	RLIMIT_MEMLOCK, {none, none}},
+		{"Max address space",	bytes,	RLIMIT_AS,	{none, none}},
+
+		{"Max file locks",	locks,	not_supported,	{RLIM_INFINITY, RLIM_INFINITY}},
+		{"Max pending signals", signals,not_supported,	{RLIM_INFINITY, RLIM_INFINITY}},
+		{"Max msgqueue size",	bytes,	not_supported,	{0, 0}},
+		{"Max nice priority", 		"",	not_supported,	{0, 0}},
+		{"Max realtime priority",	"",	not_supported,	{0, 0}},
+		{"Max realtime timeout",	"us",	not_supported, 	{RLIM_INFINITY, RLIM_INFINITY}}	
+	};
+
+	struct plimit * cur_proc_lim = lim_alloc();
+	lim_copy(cur_proc_lim, p->p_limit);
+
+	sbuf_printf(sb, "%-26s%-21s%-21s%-21s\n", "Limit", "Soft Limit",
+			"Hard Limit", "Units");
+	
+	int i;
+	for (i = 0; i < 16; i++) {
+		struct rlimit i_rlimits;
+		if (limits_info[i].rlim_id == not_supported)
+			i_rlimits = limits_info[i].rlimit;
+		else
+			i_rlimits = cur_proc_lim->pl_rlimit[limits_info[i].rlim_id];
+
+		sbuf_printf(sb, "%-26s", limits_info[i].limit_desc);
+		if (i_rlimits.rlim_cur == RLIM_INFINITY) 
+			sbuf_printf(sb, "%-21s", unlimited);
+		else
+			sbuf_printf(sb, "%-21ld", (long)i_rlimits.rlim_cur);
+	
+		if (i_rlimits.rlim_max == RLIM_INFINITY)
+			sbuf_printf(sb, "%-21s", unlimited);
+		else
+			sbuf_printf(sb, "%-21ld", (long)i_rlimits.rlim_max);
+		
+		sbuf_printf(sb, "%-10s\n", limits_info[i].limit_unit);			
+	}
+
+	lim_free(cur_proc_lim);
+	return (0);
+}
+
 
 /*
  * Filler function for proc/sys/kernel/random/uuid
@@ -1504,6 +1579,8 @@ linprocfs_init(PFS_INIT_ARGS)
 	    NULL, NULL, NULL, 0);
 	pfs_create_file(dir, "auxv", &linprocfs_doauxv,
 	    NULL, &procfs_candebug, NULL, PFS_RD|PFS_RAWRD);
+	pfs_create_file(dir, "limits", &linprocfs_doproclimits,
+	    NULL, NULL, NULL, PFS_RD);
 
 	/* /proc/scsi/... */
 	dir = pfs_create_dir(root, "scsi", NULL, NULL, NULL, 0);
