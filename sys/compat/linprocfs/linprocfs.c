@@ -1400,7 +1400,6 @@ linprocfs_doproclimits(PFS_FILL_ARGS)
 		{"Max open files",	files,	RLIMIT_NOFILE,  {none, none}},
 		{"Max locked memory",	bytes,	RLIMIT_MEMLOCK, {none, none}},
 		{"Max address space",	bytes,	RLIMIT_AS,	{none, none}},
-
 		{"Max file locks",	locks,	not_supported,	{RLIM_INFINITY, RLIM_INFINITY}},
 		{"Max pending signals", signals,not_supported,	{RLIM_INFINITY, RLIM_INFINITY}},
 		{"Max msgqueue size",	bytes,	not_supported,	{0, 0}},
